@@ -1,0 +1,78 @@
+-- Digital Banking Platform Analysis
+
+-- A. Usage Intensity Segmentation
+-- Using COALESCE to handle NULL values in transaction_amount and transaction_duration.
+SELECT 
+    c.customer_id,
+    c.age,
+    c.gender,
+    c.income_level,
+    SUM(CASE WHEN p.platform = 'Mobile Banking' THEN 1 ELSE 0 END) AS mobile_transactions,
+    SUM(CASE WHEN p.platform = 'Internet Banking' THEN 1 ELSE 0 END) AS internet_transactions,
+    SUM(CASE WHEN p.platform = 'ATM' THEN 1 ELSE 0 END) AS atm_transactions,
+    COUNT(p.transaction_id) AS total_transactions,
+    COALESCE(AVG(p.transaction_duration), 0) AS avg_transaction_duration,  
+    CASE 
+        WHEN COUNT(p.transaction_id) > 50 THEN 'High Usage'
+        WHEN COUNT(p.transaction_id) BETWEEN 20 AND 50 THEN 'Medium Usage'
+        ELSE 'Low Usage'
+    END AS usage_segment
+FROM customer_profiles c
+LEFT JOIN platform_usage_logs p ON c.customer_id = p.customer_id
+GROUP BY c.customer_id, c.age, c.gender, c.income_level;
+
+-- B. Transaction Type Distribution by Platform
+-- Using COALESCE to handle NULL values in transaction_amount and transaction_duration.
+SELECT 
+    platform,
+    transaction_type,
+    COUNT(transaction_id) AS transaction_count,
+    COALESCE(SUM(transaction_amount), 0) AS total_amount,  
+    COALESCE(AVG(transaction_duration), 0) AS avg_duration  
+FROM platform_usage_logs
+GROUP BY platform, transaction_type;
+
+-- C. Platform Transition Trends
+-- Ensuring platform names are standardized before analyzing transitions.
+WITH ranked_transactions AS (
+    SELECT 
+        customer_id,
+        INITCAP(platform) AS platform,  
+        transaction_date,
+        LEAD(INITCAP(platform)) OVER (PARTITION BY customer_id ORDER BY transaction_date) AS next_platform
+    FROM platform_usage_logs
+)
+SELECT 
+    platform AS current_platform,
+    next_platform,
+    COUNT(*) AS transition_count
+FROM ranked_transactions
+WHERE next_platform IS NOT NULL
+GROUP BY platform, next_platform;
+
+-- D. Transaction Duration and Amount Analysis by Segment
+-- Using COALESCE to handle NULL values in transaction_duration and transaction_amount.
+SELECT 
+    c.customer_id,
+    CASE 
+        WHEN COUNT(p.transaction_id) > 50 THEN 'High Usage'
+        WHEN COUNT(p.transaction_id) BETWEEN 20 AND 50 THEN 'Medium Usage'
+        ELSE 'Low Usage'
+    END AS usage_segment,
+    COALESCE(AVG(p.transaction_duration), 0) AS avg_transaction_duration,  
+    COALESCE(SUM(p.transaction_amount), 0) AS total_transaction_amount  
+FROM customer_profiles c
+JOIN platform_usage_logs p ON c.customer_id = p.customer_id
+GROUP BY c.customer_id
+ORDER BY usage_segment;
+
+-- E. Time Series Analysis
+-- Standardizing platform names and excluding rows with NULL dates.
+SELECT 
+    DATE_TRUNC('month', transaction_date) AS transaction_month,
+    INITCAP(platform) AS platform,  -- Standardize platform names
+    COALESCE(COUNT(transaction_id), 0) AS transaction_count  
+FROM platform_usage_logs
+WHERE transaction_date IS NOT NULL  -- Exclude NULL dates
+GROUP BY transaction_month, platform
+ORDER BY transaction_month;
